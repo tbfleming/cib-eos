@@ -98,6 +98,6 @@ namespace std {
 /**
  * Provide == for checksum256 in global namespace
  */
-bool operator==(const checksum256& lhs, const checksum256& rhs) {
+inline bool operator==(const checksum256& lhs, const checksum256& rhs) {
    return memcmp(&lhs, &rhs, sizeof(lhs)) == 0;
 }
