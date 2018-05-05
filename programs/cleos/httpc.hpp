@@ -5,7 +5,7 @@
 #pragma once
 
 namespace eosio { namespace client { namespace http {
-   fc::variant call( const std::string& server, uint16_t port,
+   fc::variant call( const std::string& server_url,
                      const std::string& path,
                      const fc::variant& postdata = fc::variant() );
 
@@ -22,8 +22,12 @@ namespace eosio { namespace client { namespace http {
    const string get_currency_stats_func = chain_func_base + "/get_currency_stats";
    const string get_required_keys = chain_func_base + "/get_required_keys";
 
+
+   const string history_func_base = "/v1/history";
+   const string get_actions_func = history_func_base + "/get_actions";
+   const string get_transaction_func = history_func_base + "/get_transaction";
+
    const string account_history_func_base = "/v1/account_history";
-   const string get_transaction_func = account_history_func_base + "/get_transaction";
    const string get_transactions_func = account_history_func_base + "/get_transactions";
    const string get_key_accounts_func = account_history_func_base + "/get_key_accounts";
    const string get_controlled_accounts_func = account_history_func_base + "/get_controlled_accounts";
@@ -46,4 +50,6 @@ namespace eosio { namespace client { namespace http {
    const string wallet_unlock = wallet_func_base + "/unlock";
    const string wallet_import_key = wallet_func_base + "/import_key";
    const string wallet_sign_trx = wallet_func_base + "/sign_transaction";
+
+   FC_DECLARE_EXCEPTION( connection_exception, 1100000, "Connection Exception" );
  }}}

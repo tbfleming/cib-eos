@@ -24,24 +24,23 @@ namespace eosio {
 
    class transaction_header {
    public:
-      transaction_header( time exp = now() + 60, region_id r = 0 )
-         :expiration(exp),region(r)
-      {}
+      transaction_header( time exp = now() + 60 )
+         :expiration(exp)
+      { eosio::print("now=", now(), " exp=", expiration, "\n"); }
 
       time            expiration;
-      region_id       region;
       uint16_t        ref_block_num;
       uint32_t        ref_block_prefix;
       unsigned_int    net_usage_words = 0UL; /// number of 8 byte words this transaction can serialize into after compressions
       unsigned_int    kcpu_usage = 0UL; /// number of CPU usage units to bill transaction for
       unsigned_int    delay_sec = 0UL; /// number of CPU usage units to bill transaction for
 
-      EOSLIB_SERIALIZE( transaction_header, (expiration)(region)(ref_block_num)(ref_block_prefix)(net_usage_words)(kcpu_usage)(delay_sec) )
+      EOSLIB_SERIALIZE( transaction_header, (expiration)(ref_block_num)(ref_block_prefix)(net_usage_words)(kcpu_usage)(delay_sec) )
    };
 
    class transaction : public transaction_header {
    public:
-      transaction(time exp = now() + 60, region_id r = 0) : transaction_header( exp, r ) {}
+      transaction(time exp = now() + 60) : transaction_header( exp ) {}
 
       void send(uint64_t sender_id, account_name payer) const {
          auto serialize = pack(*this);
@@ -54,18 +53,15 @@ namespace eosio {
       EOSLIB_SERIALIZE_DERIVED( transaction, transaction_header, (context_free_actions)(actions) )
    };
 
-   class deferred_transaction : public transaction {
-      public:
-         uint128_t     sender_id;
-         account_name  sender;
-         account_name  payer;
-         time          execute_after;
+   struct onerror {
+      uint128_t    sender_id;
+      transaction  sent_trx;
 
-         static deferred_transaction from_current_action() {
-            return unpack_action_data<deferred_transaction>();
-         }
+      static onerror from_current_action() {
+         return unpack_action_data<onerror>();
+      }
 
-         EOSLIB_SERIALIZE_DERIVED( deferred_transaction, transaction, (sender_id)(sender)(payer)(execute_after) )
+      EOSLIB_SERIALIZE( onerror, (sender_id)(sent_trx) )
    };
 
    /**

@@ -149,6 +149,7 @@ void test_transaction::test_read_transaction() {
    auto size = transaction_size();
    char buf[size];
    uint32_t read = read_transaction( buf, size );
+   eosio_assert( size == read, "read_transaction failed");
    sha256(buf, read, &h);
    printhex( &h, sizeof(h) );
 }
@@ -201,7 +202,7 @@ void test_transaction::send_transaction_trigger_error_handler(uint64_t receiver,
    trx.send(0, receiver);
 }
 
-void test_transaction::assert_false_error_handler(const eosio::deferred_transaction& dtrx) {
+void test_transaction::assert_false_error_handler(const eosio::transaction& dtrx) {
    auto onerror_action = eosio::get_action(1, 0);
    eosio_assert( onerror_action.authorization.at(0).actor == dtrx.actions.at(0).account,
                 "authorizer of onerror action does not match receiver of original action in the deferred transaction" );
@@ -225,20 +226,6 @@ void test_transaction::send_transaction_large(uint64_t receiver, uint64_t, uint6
    eosio_assert(false, "send_transaction_large() should've thrown an error");
 }
 
-void test_transaction::send_transaction_expiring_late(uint64_t receiver, uint64_t, uint64_t) {
-   using namespace eosio;
-   account_name cur_send;
-   read_action_data( &cur_send, sizeof(account_name) );
-   test_action_action<N(testapi), WASM_TEST_ACTION("test_action", "test_current_sender")> test_action;
-   copy_data((char*)&cur_send, sizeof(account_name), test_action.data);
-
-   auto trx = transaction(now() + 60*60*24*365);
-   trx.actions.emplace_back(vector<permission_level>{{N(testapi), N(active)}}, test_action);
-   trx.send(0, receiver);
-
-   eosio_assert(false, "send_transaction_expiring_late() should've thrown an error");
-}
-
 /**
  * deferred transaction
  */
@@ -253,6 +240,18 @@ void test_transaction::send_deferred_transaction(uint64_t receiver, uint64_t, ui
    trx.actions.emplace_back(vector<permission_level>{{N(testapi), N(active)}}, test_action);
    trx.delay_sec = 2;
    trx.send( 0xffffffffffffffff, receiver );
+}
+
+void test_transaction::send_deferred_tx_given_payer() {
+   using namespace eosio;
+   uint64_t payer;
+   read_action_data(&payer, action_data_size());
+
+   auto trx = transaction();
+   test_action_action<N(testapi), WASM_TEST_ACTION("test_transaction", "deferred_print")> test_action;
+   trx.actions.emplace_back(vector<permission_level>{{N(testapi), N(active)}}, test_action);
+   trx.delay_sec = 2;
+   trx.send( 0xffffffffffffffff, payer );
 }
 
 void test_transaction::cancel_deferred_transaction() {
@@ -275,62 +274,21 @@ void test_transaction::send_cf_action_fail() {
    eosio_assert(false, "send_cfa_action_fail() should've thrown an error");
 }
 
-void test_transaction::read_inline_action() {
-   using namespace eosio;
-   using dummy_act_t = test_dummy_action<N(testapi), WASM_TEST_ACTION("test_action","assert_true")>;
-
-   char buffer[64];
-   auto res = get_action( 3, 0, buffer, 64);
-   eosio_assert(res == -1, "get_action error 0");
-
-   auto dummy_act = dummy_act_t{1, 2, 3};
-
-   action act(vector<permission_level>{{N(testapi), N(active)}}, dummy_act);
-   act.send();
-
-   res = get_action( 3, 0, buffer, 64);
-   eosio_assert(res != -1, "get_action error");
-
-   action tmp;
-   datastream<char *> ds(buffer, (size_t)res);
-   ds >> tmp.account;
-   ds >> tmp.name;
-   ds >> tmp.authorization;
-   ds >> tmp.data;
-
-   auto dres = tmp.data_as<dummy_act_t>();
-   eosio_assert(dres.a == 1 && dres.b == 2 && dres.c == 3, "data_as error");
-
-   res = get_action( 3, 1, buffer, 64);
-   eosio_assert(res == -1, "get_action error -1");
+void test_transaction::stateful_api() {
+   char buf[4] = {1};
+   db_store_i64(N(test_transaction), N(table), N(test_transaction), 0, buf, 4);
 }
 
-void test_transaction::read_inline_cf_action() {
-   using namespace eosio;
-   using dummy_act_t = test_dummy_action<N(testapi), WASM_TEST_ACTION("test_action","assert_true_cf")>;
+void test_transaction::context_free_api() {
+   char buf[128] = {0};
+   get_context_free_data(0, buf, sizeof(buf));
+}
 
-   char buffer[64];
-   auto res = get_action( 2, 0, buffer, 64);
-   eosio_assert(res == -1, "get_action error 0");
+extern "C" { int is_feature_active(int64_t); }
+void test_transaction::new_feature() {
+   eosio_assert(false == is_feature_active(N(newfeature)), "we should not have new features unless hardfork");
+}
 
-   auto dummy_act = dummy_act_t{1, 2, 3};
-
-   action act(dummy_act);
-   act.send_context_free();
-
-   res = get_action( 2, 0, buffer, 64);
-   eosio_assert(res != -1, "get_action error");
-
-   action tmp;
-   datastream<char *> ds(buffer, (size_t)res);
-   ds >> tmp.account;
-   ds >> tmp.name;
-   ds >> tmp.authorization;
-   ds >> tmp.data;
-
-   auto dres = tmp.data_as<dummy_act_t>();
-   eosio_assert(dres.a == 1 && dres.b == 2 && dres.c == 3, "data_as error");
-
-   res = get_action( 2, 1, buffer, 64);
-   eosio_assert(res == -1, "get_action error -1");
+void test_transaction::active_new_feature() {
+   activate_feature(N(newfeature));
 }

@@ -60,7 +60,7 @@ namespace eosio { namespace chain {
 
             wasm_injections::wasm_binary_injection injector(module);
             injector.inject();
-            
+
             std::vector<U8> bytes;
             try {
                Serialization::ArrayOutputStream outstream;

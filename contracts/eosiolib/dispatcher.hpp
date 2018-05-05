@@ -43,8 +43,11 @@ namespace eosio {
 
       //using malloc/free here potentially is not exception-safe, although WASM doesn't support exceptions
       constexpr size_t max_stack_buffer_size = 512;
-      void* buffer = max_stack_buffer_size < size ? malloc(size) : alloca(size);
-      read_action_data( buffer, size );
+      void* buffer = nullptr;
+      if( size > 0 ) {
+         buffer = max_stack_buffer_size < size ? malloc(size) : alloca(size);
+         read_action_data( buffer, size );
+      }
 
       auto args = unpack<std::tuple<std::decay_t<Args>...>>( (char*)buffer, size );
 
@@ -63,7 +66,7 @@ namespace eosio {
 #define EOSIO_API_CALL( r, OP, elem ) \
    case ::eosio::string_to_name( BOOST_PP_STRINGIZE(elem) ): \
       eosio::execute_action( &thiscontract, &OP::elem ); \
-      return;
+      break;
 
 #define EOSIO_API( TYPE,  MEMBERS ) \
    BOOST_PP_SEQ_FOR_EACH( EOSIO_API_CALL, TYPE, MEMBERS )
@@ -77,7 +80,7 @@ extern "C" { \
          switch( action ) { \
             EOSIO_API( TYPE, MEMBERS ) \
          } \
-         eosio_exit(0); \
+         /* does not allow destructor of thiscontract to run: eosio_exit(0); */ \
       } \
    } \
 } \

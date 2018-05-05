@@ -59,6 +59,8 @@ namespace eosio {
    struct symbol_type {
       symbol_name value;
 
+      symbol_type() { }
+      symbol_type(symbol_name s): value(s) { }
       bool     is_valid()const  { return is_valid_symbol( value ); }
       uint64_t precision()const { return value & 0xff; }
       uint64_t name()const      { return value >> 8;   }
@@ -199,7 +201,7 @@ namespace eosio {
 
       friend bool operator==( const asset& a, const asset& b ) {
          eosio_assert( a.symbol == b.symbol, "comparison of assets with different symbols is not allowed" );
-         return a.amount < b.amount;
+         return a.amount == b.amount;
       }
 
       friend bool operator!=( const asset& a, const asset& b ) {
@@ -247,6 +249,17 @@ namespace eosio {
          prints_l( fraction, uint32_t(p) );
          prints(" ");
          symbol.print(false);
+      }
+
+      void adjust_precision(const symbol_type& ref_sym) {
+         eosio_assert(this->symbol.name() == ref_sym.name(), "comparison of symbols with different names is not allowed");
+         if (this->symbol.precision() == ref_sym.precision())
+            return;
+         eosio_assert(ref_sym.precision() >= this->symbol.precision(), "asset symbol has higher precision than expected");
+         for (uint8_t i = 0; i < ref_sym.precision() - this->symbol.precision(); ++i) {
+            this->amount *= 10;
+         }
+         this->symbol.value = ref_sym.value;
       }
 
       EOSLIB_SERIALIZE( asset, (amount)(symbol) )
