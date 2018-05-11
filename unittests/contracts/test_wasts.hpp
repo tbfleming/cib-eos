@@ -79,7 +79,7 @@ static const char misaligned_const_ref_wast[] = R"=====(
 (module
  (import "env" "sha256" (func $sha256 (param i32 i32 i32)))
  (import "env" "assert_sha256" (func $assert_sha256 (param i32 i32 i32)))
- (import "env" "memcpy" (func $memcpy (param i32 i32 i32) (result i32)))
+ (import "env" "memmove" (func $memmove (param i32 i32 i32) (result i32)))
  (table 0 anyfunc)
  (memory $0 32)
  (data (i32.const 4) "hello")
@@ -92,7 +92,7 @@ static const char misaligned_const_ref_wast[] = R"=====(
    (i32.const 16)
   )
   (set_local $3
-   (call $memcpy
+   (call $memmove
     (i32.const 17)
     (i32.const 16)
     (i32.const 64) 
@@ -140,6 +140,41 @@ static const char entry_wast[] = R"=====(
   )
  )
  (start $entry)
+)
+)=====";
+
+static const char entry_wast_2[] = R"=====(
+(module
+ (import "env" "require_auth" (func $require_auth (param i64)))
+ (import "env" "eosio_assert" (func $eosio_assert (param i32 i32)))
+ (import "env" "current_time" (func $current_time (result i64)))
+ (table 0 anyfunc)
+ (memory $0 1)
+ (export "memory" (memory $0))
+ (export "apply" (func $apply))
+ (start $entry)
+ (func $apply (param $0 i64) (param $1 i64) (param $2 i64)
+  (block
+   (call $require_auth (i64.const 6121376101093867520))
+   (call $eosio_assert
+    (i64.eq
+     (i64.load offset=4
+      (i32.const 0)
+     )
+     (call $current_time)
+    )
+    (i32.const 0)
+   )
+  )
+ )
+ (func $entry
+  (block
+   (i64.store offset=4
+    (i32.const 0)
+    (call $current_time)
+   )
+  )
+ )
 )
 )=====";
 

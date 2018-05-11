@@ -35,8 +35,7 @@ BOOST_FIXTURE_TEST_CASE( delay_create_account, validating_tester) { try {
                                 .creator  = creator,
                                 .name     = a,
                                 .owner    = owner_auth,
-                                .active   = authority( get_public_key( a, "active" ) ),
-                                .recovery = authority( get_public_key( a, "recovery" ) ),
+                                .active   = authority( get_public_key( a, "active" ) )
                              });
    set_transaction_headers(trx);
    trx.delay_sec = 3;
@@ -63,8 +62,7 @@ BOOST_FIXTURE_TEST_CASE( delay_error_create_account, validating_tester) { try {
                                 .creator  = N(bad), /// a does not exist, this should error when execute
                                 .name     = a,
                                 .owner    = owner_auth,
-                                .active   = authority( get_public_key( a, "active" ) ),
-                                .recovery = authority( get_public_key( a, "recovery" ) ),
+                                .active   = authority( get_public_key( a, "active" ) )
                              });
    set_transaction_headers(trx);
    trx.delay_sec = 3;
@@ -74,7 +72,13 @@ BOOST_FIXTURE_TEST_CASE( delay_error_create_account, validating_tester) { try {
    auto trace = push_transaction( trx );
    edump((*trace));
 
-   produce_blocks(8);
+   produce_blocks(6);
+
+   auto scheduled_trxs = control->get_scheduled_transactions();
+   BOOST_REQUIRE_EQUAL(scheduled_trxs.size(), 1);
+   auto dtrace = control->push_scheduled_transaction(scheduled_trxs.front(), fc::time_point::maximum());
+   BOOST_REQUIRE_EQUAL(dtrace->except.valid(), true);
+   BOOST_REQUIRE_EQUAL(dtrace->except->code(), missing_auth_exception::code_value);
 
 } FC_LOG_AND_RETHROW() }
 
@@ -1139,21 +1143,22 @@ BOOST_AUTO_TEST_CASE( link_delay_link_change_test ) { try {
    BOOST_REQUIRE_EQUAL(asset::from_string("0.0000 CUR"), liquid_balance);
 
    BOOST_REQUIRE_EXCEPTION(
-      chain.push_action(config::system_account_name, linkauth::get_name(), tester_account, fc::mutable_variant_object()
+      chain.push_action( config::system_account_name, linkauth::get_name(),
+                         vector<permission_level>{permission_level{tester_account, N(first)}},
+                         fc::mutable_variant_object()
       ("account", "tester")
       ("code", eosio_token)
       ("type", "transfer")
       ("requirement", "second"),
       30, 3),
-      transaction_exception,
-      [] (const transaction_exception &e)->bool {
-         expect_assert_message(e, "transaction_exception: transaction validation exception\nauthorization imposes a delay (10 sec) greater than the delay specified in transaction header (3 sec)");
-         return true;
-      }
+      unsatisfied_authorization,
+      fc_exception_message_starts_with("transaction declares authority")
    );
 
    // this transaction will be delayed 20 blocks
-   chain.push_action(config::system_account_name, linkauth::get_name(), tester_account, fc::mutable_variant_object()
+   chain.push_action( config::system_account_name, linkauth::get_name(),
+                      vector<permission_level>{{tester_account, N(first)}},
+                      fc::mutable_variant_object()
            ("account", "tester")
            ("code", eosio_token)
            ("type", "transfer")
@@ -1335,16 +1340,16 @@ BOOST_AUTO_TEST_CASE( link_delay_unlink_test ) { try {
    BOOST_REQUIRE_EQUAL(asset::from_string("0.0000 CUR"), liquid_balance);
 
    BOOST_REQUIRE_EXCEPTION(
-      chain.push_action(config::system_account_name, unlinkauth::get_name(), tester_account, fc::mutable_variant_object()
-      ("account", "tester")
-      ("code", eosio_token)
-      ("type", "transfer"),
-      30, 7),
-      transaction_exception,
-      [] (const transaction_exception &e)->bool {
-         expect_assert_message(e, "transaction_exception: transaction validation exception\nauthorization imposes a delay (10 sec) greater than the delay specified in transaction header (7 sec)");
-         return true;
-      }
+      chain.push_action( config::system_account_name, unlinkauth::get_name(),
+                         vector<permission_level>{{tester_account, N(first)}},
+                         fc::mutable_variant_object()
+         ("account", "tester")
+         ("code", eosio_token)
+         ("type", "transfer"),
+         30, 7
+      ),
+      unsatisfied_authorization,
+      fc_exception_message_starts_with("transaction declares authority")
    );
 
    // this transaction will be delayed 20 blocks
@@ -1862,18 +1867,18 @@ BOOST_AUTO_TEST_CASE( canceldelay_test ) { try {
    BOOST_REQUIRE_EQUAL(asset::from_string("0.0000 CUR"), liquid_balance);
 
    BOOST_REQUIRE_EXCEPTION(
-      chain.push_action(config::system_account_name, updateauth::get_name(), tester_account, fc::mutable_variant_object()
+      chain.push_action( config::system_account_name,
+                         updateauth::get_name(),
+                         vector<permission_level>{{tester_account, N(first)}},
+                         fc::mutable_variant_object()
             ("account", "tester")
             ("permission", "first")
             ("parent", "active")
             ("auth",  authority(chain.get_public_key(tester_account, "first"))),
             30, 7
       ),
-      transaction_exception,
-      [] (const transaction_exception &e)->bool {
-         expect_assert_message(e, "transaction_exception: transaction validation exception\nauthorization imposes a delay (10 sec) greater than the delay specified in transaction header (7 sec)");
-         return true;
-      }
+      unsatisfied_authorization,
+      fc_exception_message_starts_with("transaction declares authority")
    );
 
    // this transaction will be delayed 20 blocks
@@ -2114,7 +2119,8 @@ BOOST_AUTO_TEST_CASE( canceldelay_test2 ) { try {
                                   chain::canceldelay{{N(tester), config::active_name}, trx_id});
          chain.set_transaction_headers(trx);
          trx.sign(chain.get_private_key(N(tester), "active"), chain_id_type());
-         BOOST_REQUIRE_THROW( chain.push_transaction(trx), fc::exception );
+         BOOST_REQUIRE_EXCEPTION( chain.push_transaction(trx), action_validate_exception,
+                                  fc_exception_message_is("canceling_auth in canceldelay action was not found as authorization in the original delayed transaction") );
       }
 
       // attempt canceldelay with "second" permission for delayed transfer of 1.0000 CUR
@@ -2125,6 +2131,8 @@ BOOST_AUTO_TEST_CASE( canceldelay_test2 ) { try {
          chain.set_transaction_headers(trx);
          trx.sign(chain.get_private_key(N(tester), "second"), chain_id_type());
          BOOST_REQUIRE_THROW( chain.push_transaction(trx), irrelevant_auth_exception );
+         BOOST_REQUIRE_EXCEPTION( chain.push_transaction(trx), irrelevant_auth_exception,
+                                  fc_exception_message_starts_with("canceldelay action declares irrelevant authority") );
       }
 
       // canceldelay with "active" permission for delayed transfer of 1.0000 CUR
@@ -2295,11 +2303,8 @@ BOOST_AUTO_TEST_CASE( max_transaction_delay_create ) { try {
                         ("permission", "first")
                         ("parent", "active")
                         ("auth",  authority(chain.get_public_key(tester_account, "first"), 50*86400)) ), // 50 days delay
-      chain::action_validate_exception,
-      [&](const chain::transaction_exception& e) {
-         expect_assert_message(e, "Cannot set delay longer than max_transacton_delay");
-         return true;
-      }
+      action_validate_exception,
+      fc_exception_message_starts_with("Cannot set delay longer than max_transacton_delay")
    );
 } FC_LOG_AND_RETHROW() }
 

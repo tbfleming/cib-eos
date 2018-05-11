@@ -1,7 +1,7 @@
 	OS_VER=$( cat /etc/os-release | grep VERSION_ID | cut -d'=' -f2 | sed 's/[^0-9\.]//gI' \
 	| cut -d'.' -f1 )
 
-	MEM_MEG=$( free -m | grep Mem | tr -s ' ' | cut -d\  -f2 )
+	MEM_MEG=$( free -m | sed -n 2p | tr -s ' ' | cut -d\  -f2 )
 	CPU_SPEED=$( lscpu | grep "MHz" | tr -s ' ' | cut -d\  -f3 | cut -d'.' -f1 )
 	CPU_CORE=$( lscpu | grep "^CPU(s)" | tr -s ' ' | cut -d\  -f2 )
 	MEM_GIG=$(( (($MEM_MEG / 1000) / 2) ))
@@ -463,6 +463,6 @@ mongodconf
 		printf "\n\t$( which mongod ) -f ${MONGOD_CONF} &\n"
 		printf "\tsource /opt/rh/python33/enable\n"
 		printf '\texport PATH=${HOME}/opt/mongodb/bin:$PATH\n'
-		printf "\tcd ${HOME}/eos/build; make test\n\n"
+		printf "\tcd ${BUILD_DIR}; make test\n\n"
 	return 0
 	}

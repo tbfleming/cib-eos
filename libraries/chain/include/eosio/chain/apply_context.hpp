@@ -513,12 +513,6 @@ class apply_context {
        */
       bool has_recipient(account_name account)const;
 
-      bool                     all_authorizations_used()const;
-      vector<permission_level> unused_authorizations()const;
-
-      void check_auth( const transaction& trx, const vector<permission_level>& perm );
-
-
    /// Console methods:
    public:
 
@@ -607,9 +601,6 @@ class apply_context {
       generic_index<index_long_double_object>                        idx_long_double;
 
       action_trace                                trace;
-
-      uint64_t                                    cpu_usage = 0;
-      uint64_t                                    cpu_usage_limit = 0;
 
    private:
 

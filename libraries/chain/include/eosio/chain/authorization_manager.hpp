@@ -7,6 +7,9 @@
 #include <eosio/chain/types.hpp>
 #include <eosio/chain/permission_object.hpp>
 
+#include <utility>
+#include <functional>
+
 namespace eosio { namespace chain {
 
    class controller;
@@ -39,6 +42,14 @@ namespace eosio { namespace chain {
                                                      time_point initial_creation_time = time_point()
                                                    );
 
+         void modify_permission( const permission_object& permission, const authority& auth );
+
+         void remove_permission( const permission_object& permission );
+
+         void update_permission_usage( const permission_object& permission );
+
+         fc::time_point get_permission_last_used( const permission_object& permission )const;
+
          const permission_object*  find_permission( const permission_level& level )const;
          const permission_object&  get_permission( const permission_level& level )const;
 
@@ -55,47 +66,63 @@ namespace eosio { namespace chain {
                                                             )const;
 
          /**
-          * @param actions - the actions to check authorization across
-          * @param provided_keys - the set of public keys which have authorized the transaction
-          * @param allow_unused_signatures - true if method should not assert on unused signatures
-          * @param provided_accounts - the set of accounts which have authorized the transaction (presumed to be owner)
+          *  @brief Check authorizations of a vector of actions with provided keys, permission levels, and delay
           *
-          * @return fc::microseconds set to the max delay that this authorization requires to complete
+          *  @param actions - the actions to check authorization across
+          *  @param provided_keys - the set of public keys which have authorized the transaction
+          *  @param provided_permissions - the set of permissions which have authorized the transaction (empty permission name acts as wildcard)
+          *  @param provided_delay - the delay satisfied by the transaction
+          *  @param checktime - the function that can be called to track CPU usage and time during the process of checking authorization
+          *  @param allow_unused_keys - true if method should not assert on unused keys
           */
-         fc::microseconds check_authorization( const vector<action>& actions,
-                                               const flat_set<public_key_type>& provided_keys,
-                                               bool                             allow_unused_signatures = false,
-                                               flat_set<account_name>           provided_accounts = flat_set<account_name>(),
-                                               flat_set<permission_level>       provided_levels = flat_set<permission_level>()
-                                             )const;
+         void
+         check_authorization( const vector<action>&                actions,
+                              const flat_set<public_key_type>&     provided_keys,
+                              const flat_set<permission_level>&    provided_permissions = flat_set<permission_level>(),
+                              fc::microseconds                     provided_delay = fc::microseconds(0),
+                              const std::function<void(uint32_t)>& checktime = std::function<void(uint32_t)>(),
+                              bool                                 allow_unused_keys = false
+                            )const;
+
 
          /**
-          * @param account - the account owner of the permission
-          * @param permission - the permission name to check for authorization
-          * @param provided_keys - a set of public keys
+          *  @brief Check authorizations of a permission with provided keys, permission levels, and delay
           *
-          * @return true if the provided keys are sufficient to authorize the account permission
+          *  @param account - the account owner of the permission
+          *  @param permission - the permission name to check for authorization
+          *  @param provided_keys - a set of public keys
+          *  @param provided_permissions - the set of permissions which can be considered satisfied (empty permission name acts as wildcard)
+          *  @param provided_delay - the delay considered to be satisfied for the authorization check
+          *  @param checktime - the function that can be called to track CPU usage and time during the process of checking authorization
+          *  @param allow_unused_keys - true if method does not require all keys to be used
           */
-         bool check_authorization( account_name account, permission_name permission,
-                                   flat_set<public_key_type> provided_keys,
-                                   bool allow_unused_signatures
-                                 )const;
+         void
+         check_authorization( account_name                         account,
+                              permission_name                      permission,
+                              const flat_set<public_key_type>&     provided_keys,
+                              const flat_set<permission_level>&    provided_permissions = flat_set<permission_level>(),
+                              fc::microseconds                     provided_delay = fc::microseconds(0),
+                              const std::function<void(uint32_t)>& checktime = std::function<void(uint32_t)>(),
+                              bool                                 allow_unused_keys = false
+                            )const;
 
          flat_set<public_key_type> get_required_keys( const transaction& trx,
-                                                      const flat_set<public_key_type>& candidate_keys
+                                                      const flat_set<public_key_type>& candidate_keys,
+                                                      fc::microseconds provided_delay = fc::microseconds(0)
                                                     )const;
 
 
+         static std::function<void(uint32_t)> _noop_checktime;
 
       private:
          const controller&    _control;
          chainbase::database& _db;
 
-         optional<fc::microseconds> check_updateauth_authorization( const updateauth& update, const vector<permission_level>& auths )const;
-         fc::microseconds check_deleteauth_authorization( const deleteauth& del, const vector<permission_level>& auths )const;
-         fc::microseconds check_linkauth_authorization( const linkauth& link, const vector<permission_level>& auths )const;
-         fc::microseconds check_unlinkauth_authorization( const unlinkauth& unlink, const vector<permission_level>& auths )const;
-         void             check_canceldelay_authorization( const canceldelay& cancel, const vector<permission_level>& auths )const;
+         void             check_updateauth_authorization( const updateauth& update, const vector<permission_level>& auths )const;
+         void             check_deleteauth_authorization( const deleteauth& del, const vector<permission_level>& auths )const;
+         void             check_linkauth_authorization( const linkauth& link, const vector<permission_level>& auths )const;
+         void             check_unlinkauth_authorization( const unlinkauth& unlink, const vector<permission_level>& auths )const;
+         fc::microseconds check_canceldelay_authorization( const canceldelay& cancel, const vector<permission_level>& auths )const;
 
          optional<permission_name> lookup_linked_permission( account_name authorizer_account,
                                                              scope_name code_account,

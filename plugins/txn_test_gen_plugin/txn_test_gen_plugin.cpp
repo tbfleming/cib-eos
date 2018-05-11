@@ -105,25 +105,22 @@ struct txn_test_gen_plugin_impl {
          {
          auto owner_auth   = eosio::chain::authority{1, {{txn_text_receiver_A_pub_key, 1}}, {}};
          auto active_auth  = eosio::chain::authority{1, {{txn_text_receiver_A_pub_key, 1}}, {}};
-         auto recovery_auth = eosio::chain::authority{1, {}, {{{creator, "active"}, 1}}};
 
-         trx.actions.emplace_back(vector<chain::permission_level>{{creator,"active"}}, newaccount{creator, newaccountA, owner_auth, active_auth, recovery_auth});
+         trx.actions.emplace_back(vector<chain::permission_level>{{creator,"active"}}, newaccount{creator, newaccountA, owner_auth, active_auth});
          }
          //create "B" account
          {
          auto owner_auth   = eosio::chain::authority{1, {{txn_text_receiver_B_pub_key, 1}}, {}};
          auto active_auth  = eosio::chain::authority{1, {{txn_text_receiver_B_pub_key, 1}}, {}};
-         auto recovery_auth = eosio::chain::authority{1, {}, {{{creator, "active"}, 1}}};
 
-         trx.actions.emplace_back(vector<chain::permission_level>{{creator,"active"}}, newaccount{creator, newaccountB, owner_auth, active_auth, recovery_auth});
+         trx.actions.emplace_back(vector<chain::permission_level>{{creator,"active"}}, newaccount{creator, newaccountB, owner_auth, active_auth});
          }
          //create "eosio.token" account
          {
          auto owner_auth   = eosio::chain::authority{1, {{txn_text_receiver_C_pub_key, 1}}, {}};
          auto active_auth  = eosio::chain::authority{1, {{txn_text_receiver_C_pub_key, 1}}, {}};
-         auto recovery_auth = eosio::chain::authority{1, {}, {{{creator, "active"}, 1}}};
 
-         trx.actions.emplace_back(vector<chain::permission_level>{{creator,"active"}}, newaccount{creator, newaccountC, owner_auth, active_auth, recovery_auth});
+         trx.actions.emplace_back(vector<chain::permission_level>{{creator,"active"}}, newaccount{creator, newaccountC, owner_auth, active_auth});
          }
 
          trx.expiration = cc.head_block_time() + fc::seconds(30);
@@ -269,7 +266,7 @@ struct txn_test_gen_plugin_impl {
       {
       signed_transaction trx;
       trx.actions.push_back(act_a_to_b);
-      trx.context_free_actions.emplace_back(action({}, config::nobody_account_name, "nonce", fc::raw::pack(nonce++)));
+      trx.context_free_actions.emplace_back(action({}, config::null_account_name, "nonce", fc::raw::pack(nonce++)));
       trx.set_reference_block(reference_block_id);
       trx.expiration = cc.head_block_time() + fc::seconds(30);
       trx.max_net_usage_words = 100;
@@ -280,7 +277,7 @@ struct txn_test_gen_plugin_impl {
       {
       signed_transaction trx;
       trx.actions.push_back(act_b_to_a);
-      trx.context_free_actions.emplace_back(action({}, config::nobody_account_name, "nonce", fc::raw::pack(nonce++)));
+      trx.context_free_actions.emplace_back(action({}, config::null_account_name, "nonce", fc::raw::pack(nonce++)));
       trx.set_reference_block(reference_block_id);
       trx.expiration = cc.head_block_time() + fc::seconds(30);
       trx.max_net_usage_words = 100;

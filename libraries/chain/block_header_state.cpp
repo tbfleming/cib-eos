@@ -155,6 +155,7 @@ namespace eosio { namespace chain {
    */
   block_header_state block_header_state::next( const signed_block_header& h )const {
     FC_ASSERT( h.timestamp != block_timestamp_type(), "", ("h",h) );
+    FC_ASSERT( h.header_extensions.size() == 0, "no supported extensions" );
 
     FC_ASSERT( h.timestamp > header.timestamp, "block must be later in time" );
     FC_ASSERT( h.previous == id, "block must link to current state" );
@@ -162,13 +163,12 @@ namespace eosio { namespace chain {
     FC_ASSERT( result.header.producer == h.producer, "wrong producer specified" );
     FC_ASSERT( result.header.schedule_version == h.schedule_version, "schedule_version in signed block is corrupted" );
 
-    //idump((h.producer)(h.block_num()-h.confirmed)(h.block_num()));
     auto itr = producer_to_last_produced.find(h.producer);
     if( itr != producer_to_last_produced.end() ) {
        FC_ASSERT( itr->second <= result.block_num - h.confirmed, "producer double-confirming known range" );
     }
 
-    // FC_ASSERT( result.header.block_mroot == h.block_mroot, "mistmatch block merkle root" );
+    // FC_ASSERT( result.header.block_mroot == h.block_mroot, "mismatch block merkle root" );
 
      /// below this point is state changes that cannot be validated with headers alone, but never-the-less,
      /// must result in header state changes
@@ -244,7 +244,7 @@ namespace eosio { namespace chain {
 
   void block_header_state::add_confirmation( const header_confirmation& conf ) {
      for( const auto& c : confirmations )
-        FC_ASSERT( c.producer == conf.producer, "block already confirmed by this producer" );
+        FC_ASSERT( c.producer != conf.producer, "block already confirmed by this producer" );
 
      auto key = active_schedule.get_producer_key( conf.producer );
      FC_ASSERT( key != public_key_type(), "producer not in current schedule" );

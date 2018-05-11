@@ -72,6 +72,8 @@ namespace eosio { namespace testing {
 
          static const uint32_t DEFAULT_EXPIRATION_DELTA = 6;
 
+         static const uint32_t DEFAULT_BILLED_CPU_TIME_US = 2000;
+
          void              init(bool push_genesis = true);
          void              init(controller::config config);
 
@@ -85,13 +87,28 @@ namespace eosio { namespace testing {
          void                 produce_blocks_until_end_of_round();
          signed_block_ptr     push_block(signed_block_ptr b);
 
-         transaction_trace_ptr    push_transaction( packed_transaction& trx, uint32_t skip_flag = 0/*skip_nothing */, fc::time_point deadline = fc::time_point::maximum() );
-         transaction_trace_ptr    push_transaction( signed_transaction& trx, uint32_t skip_flag = 0/*skip_nothing*/, fc::time_point deadline = fc::time_point::maximum() );
+         transaction_trace_ptr    push_transaction( packed_transaction& trx, fc::time_point deadline = fc::time_point::maximum(), uint32_t billed_cpu_time_us = DEFAULT_BILLED_CPU_TIME_US );
+         transaction_trace_ptr    push_transaction( signed_transaction& trx, fc::time_point deadline = fc::time_point::maximum(), uint32_t billed_cpu_time_us = DEFAULT_BILLED_CPU_TIME_US );
          action_result            push_action(action&& cert_act, uint64_t authorizer); // TODO/QUESTION: Is this needed?
 
-         transaction_trace_ptr    push_action( const account_name& code, const action_name& acttype, const account_name& actor, const variant_object& data, uint32_t expiration = DEFAULT_EXPIRATION_DELTA, uint32_t delay_sec = 0 );
-         transaction_trace_ptr    push_action( const account_name& code, const action_name& acttype, const vector<account_name>& actors, const variant_object& data, uint32_t expiration = DEFAULT_EXPIRATION_DELTA, uint32_t delay_sec = 0 );
-         transaction_trace_ptr    push_action( const account_name& code, const action_name& acttype, const vector<permission_level>& auths, const variant_object& data, uint32_t expiration = DEFAULT_EXPIRATION_DELTA, uint32_t delay_sec = 0 );
+         transaction_trace_ptr    push_action( const account_name& code,
+                                               const action_name& acttype,
+                                               const account_name& actor,
+                                               const variant_object& data,
+                                               uint32_t expiration = DEFAULT_EXPIRATION_DELTA,
+                                               uint32_t delay_sec = 0 );
+         transaction_trace_ptr    push_action( const account_name& code,
+                                               const action_name& acttype,
+                                               const vector<account_name>& actors,
+                                               const variant_object& data,
+                                               uint32_t expiration = DEFAULT_EXPIRATION_DELTA,
+                                               uint32_t delay_sec = 0 );
+         transaction_trace_ptr    push_action( const account_name& code,
+                                               const action_name& acttype,
+                                               const vector<permission_level>& auths,
+                                               const variant_object& data,
+                                               uint32_t expiration = DEFAULT_EXPIRATION_DELTA,
+                                               uint32_t delay_sec = 0 );
 
 
          action get_action( account_name code, action_name acttype, vector<permission_level> auths,
@@ -101,10 +118,14 @@ namespace eosio { namespace testing {
                                                       uint32_t expiration = DEFAULT_EXPIRATION_DELTA,
                                                       uint32_t delay_sec = 0)const;
 
-         vector<transaction_trace_ptr>  create_accounts( vector<account_name> names, bool multisig = false ) {
+         vector<transaction_trace_ptr>  create_accounts( vector<account_name> names,
+                                                         bool multisig = false,
+                                                         bool include_code = true
+                                                       )
+         {
             vector<transaction_trace_ptr> traces;
             traces.reserve(names.size());
-            for( auto n : names ) traces.emplace_back(create_account(n, config::system_account_name, multisig ));
+            for( auto n : names ) traces.emplace_back( create_account( n, config::system_account_name, multisig, include_code ) );
             return traces;
          }
 
@@ -121,7 +142,11 @@ namespace eosio { namespace testing {
          void delete_authority( account_name account, permission_name perm,  const vector<permission_level>& auths, const vector<private_key_type>& keys );
          void delete_authority( account_name account, permission_name perm );
 
-         transaction_trace_ptr create_account( account_name name, account_name creator = config::system_account_name, bool multisig = false );
+         transaction_trace_ptr create_account( account_name name,
+                                               account_name creator = config::system_account_name,
+                                               bool multisig = false,
+                                               bool include_code = true
+                                             );
 
          transaction_trace_ptr push_reqauth( account_name from, const vector<permission_level>& auths, const vector<private_key_type>& keys );
          transaction_trace_ptr push_reqauth(account_name from, string role, bool multi_sig = false);
@@ -156,9 +181,9 @@ namespace eosio { namespace testing {
             return get_private_key<KeyType>( keyname, role ).get_public_key();
          }
 
-         void              set_code( account_name name, const char* wast );
-         void              set_code( account_name name, const vector<uint8_t> wasm );
-         void              set_abi( account_name name, const char* abi_json );
+         void              set_code( account_name name, const char* wast, const private_key_type* signer = nullptr );
+         void              set_code( account_name name, const vector<uint8_t> wasm, const private_key_type* signer = nullptr  );
+         void              set_abi( account_name name, const char* abi_json, const private_key_type* signer = nullptr );
 
          bool                          chain_has_transaction( const transaction_id_type& txid ) const;
          const transaction_receipt&    get_transaction_receipt( const transaction_id_type& txid ) const;
@@ -273,8 +298,9 @@ namespace eosio { namespace testing {
             wdump((e.to_detail_string()));
          }
       }
+      controller::config vcfg;
+
       validating_tester() {
-         controller::config vcfg;
          vcfg.block_log_dir      = tempdir.path() / "vblocklog";
          vcfg.shared_memory_dir  = tempdir.path() / "vshared";
          vcfg.shared_memory_size = 1024*1024*8;
@@ -289,19 +315,24 @@ namespace eosio { namespace testing {
                vcfg.wasm_runtime = chain::wasm_interface::vm_type::wavm;
          }
 
+
          validating_node = std::make_unique<controller>(vcfg);
          validating_node->startup();
+
          init(true);
       }
 
+      /*
       validating_tester(controller::config config) {
          validating_node = std::make_unique<controller>(config);
          init(config);
       }
+      */
 
       signed_block_ptr produce_block( fc::microseconds skip_time = fc::milliseconds(config::block_interval_ms), uint32_t skip_flag = 0 /*skip_missed_block_penalty*/ )override {
          auto sb = _produce_block(skip_time, false, skip_flag | 2);
          validating_node->push_block( sb );
+
          return sb;
       }
 
@@ -309,18 +340,29 @@ namespace eosio { namespace testing {
          control->abort_block();
          auto sb = _produce_block(skip_time, true, skip_flag | 2);
          validating_node->push_block( sb );
+
+
+
          return sb;
       }
 
       bool validate() {
+
+
         auto hbh = control->head_block_state()->header;
         auto vn_hbh = validating_node->head_block_state()->header;
-        return control->head_block_id() == validating_node->head_block_id() &&
+        bool ok = control->head_block_id() == validating_node->head_block_id() &&
                hbh.previous == vn_hbh.previous &&
                hbh.timestamp == vn_hbh.timestamp &&
                hbh.transaction_mroot == vn_hbh.transaction_mroot &&
                hbh.action_mroot == vn_hbh.action_mroot &&
                hbh.producer == vn_hbh.producer;
+
+        validating_node.reset();
+        validating_node = std::make_unique<controller>(vcfg);
+        validating_node->startup();
+
+        return ok;
       }
 
       unique_ptr<controller>                  validating_node;

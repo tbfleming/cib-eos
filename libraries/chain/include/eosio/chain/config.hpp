@@ -17,13 +17,12 @@ const static auto default_shared_memory_dir = "shared_mem";
 const static auto default_shared_memory_size = 1*1024*1024*1024ll;
 
 const static uint64_t system_account_name    = N(eosio);
-const static uint64_t nobody_account_name    = N(nobody);
-const static uint64_t producers_account_name = N(producers);
+const static uint64_t null_account_name      = N(eosio.null);
+const static uint64_t producers_account_name = N(eosio.prods);
 
 // Active permission of producers account requires greater than 2/3 of the producers to authorize
 const static uint64_t majority_producers_permission_name = N(prod.major); // greater than 1/2 of producers needed to authorize
 const static uint64_t minority_producers_permission_name = N(prod.minor); // greater than 1/3 of producers needed to authorize0
-const static uint64_t any_producer_permission_name       = N(prod.any);   // any producer needed to authorize
 
 const static uint64_t eosio_auth_scope       = N(eosio.auth);
 const static uint64_t eosio_all_scope        = N(eosio.all);
@@ -31,6 +30,7 @@ const static uint64_t eosio_all_scope        = N(eosio.all);
 const static uint64_t active_name = N(active);
 const static uint64_t owner_name  = N(owner);
 const static uint64_t eosio_any_name = N(eosio.any);
+const static uint64_t eosio_code_name = N(eosio.code);
 
 const static int      block_interval_ms = 500;
 const static int      block_interval_us = block_interval_ms*1000;
@@ -56,16 +56,17 @@ const static uint32_t   rate_limiting_precision        = 1000*1000;
 
 const static uint32_t   default_max_block_net_usage                 = 1024 * 1024; /// at 500ms blocks and 200byte trx, this enables ~10,000 TPS burst
 const static uint32_t   default_target_block_net_usage_pct           = 10 * percent_1; /// we target 1000 TPS
-const static uint32_t   default_max_transaction_net_usage            = default_max_block_net_usage / 10;
+const static uint32_t   default_max_transaction_net_usage            = default_max_block_net_usage / 2;
 const static uint32_t   default_base_per_transaction_net_usage       = 12;  // 12 bytes (11 bytes for worst case of transaction_receipt_header + 1 byte for static_variant tag)
 const static uint32_t   default_net_usage_leeway                     = 500; // TODO: is this reasonable?
 const static uint32_t   default_context_free_discount_net_usage_num  = 20; // TODO: is this reasonable?
 const static uint32_t   default_context_free_discount_net_usage_den  = 100;
 const static uint32_t   transaction_id_net_usage                     = 32; // 32 bytes for the size of a transaction id
 
-const static uint32_t   default_max_block_cpu_usage                 = 100 * 1024 * 1024; /// at 500ms blocks and 20000instr trx, this enables ~10,000 TPS burst
-const static uint32_t   default_target_block_cpu_usage_pct          = 10 * percent_1; /// target 1000 TPS
-const static uint32_t   default_max_transaction_cpu_usage           = default_max_block_cpu_usage / 10;
+const static uint32_t   default_max_block_cpu_usage                 = 100'000; /// max block cpu usage in microseconds
+const static uint32_t   default_target_block_cpu_usage_pct          = 5 * percent_1; /// target 1000 TPS
+const static uint32_t   default_max_transaction_cpu_usage           = default_max_block_cpu_usage;
+const static uint32_t   default_min_transaction_cpu_usage_us        = 100; /// 10000 TPS equiv
 const static uint32_t   default_base_per_transaction_cpu_usage      = 512;        // TODO: is this reasonable?
 const static uint32_t   default_base_per_action_cpu_usage           = 1024;
 const static uint32_t   default_base_setcode_cpu_usage              = 2 * 1024 * 1024; /// overbilling cpu usage for setcode to cover incidental
@@ -83,13 +84,15 @@ const static uint16_t   default_max_inline_action_depth        = 4;
 const static uint16_t   default_max_auth_depth                 = 6;
 const static uint32_t   default_max_gen_trx_count              = 16;
 
-
+const static uint32_t   base_check_authorization_cpu_per_authorization      = 64;  // TODO: is this reasonable?
+const static uint32_t   base_authority_checker_cpu_per_permission           = 128; // TODO: is this reasonable?
 const static uint32_t   resource_processing_cpu_overhead_per_billed_account = 256; // TODO: is this reasonable?
 const static uint32_t   determine_payers_cpu_overhead_per_authorization     = 64;  // TODO: is this reasonable?
 const static uint32_t   ram_usage_validation_overhead_per_account           = 64;  // TODO: is this reasonable?
 
 const static uint32_t   fixed_net_overhead_of_packed_trx = 16; // TODO: is this reasonable?
 
+const static uint32_t   fixed_overhead_shared_vector_ram_bytes = 16; ///< overhead accounts for fixed portion of size of shared_vector field
 const static uint32_t   overhead_per_row_per_index_ram_bytes = 32;    ///< overhead accounts for basic tracking structures in a row per index
 const static uint32_t   overhead_per_account_ram_bytes     = 2*1024; ///< overhead accounts for basic account storage and pre-pays features like account recovery
 const static uint32_t   setcode_ram_bytes_multiplier       = 10;     ///< multiplier on contract size to account for multiple copies and cached compilation
@@ -125,9 +128,8 @@ constexpr uint64_t billable_size_v = ((billable_size<T>::value + billable_alignm
 
 } } } // namespace eosio::chain::config
 
-template<typename Number>
-Number EOS_PERCENT(Number value, uint32_t percentage) {
-   return value * percentage / eosio::chain::config::percent_100;
+constexpr uint64_t EOS_PERCENT(uint64_t value, uint32_t percentage) {
+   return (value * percentage) / eosio::chain::config::percent_100;
 }
 
 template<typename Number>

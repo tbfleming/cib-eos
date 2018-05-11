@@ -7,7 +7,6 @@
 #include <eosio/chain/generated_transaction_object.hpp>
 #include <eosio/chain/authorization_manager.hpp>
 #include <eosio/chain/resource_limits.hpp>
-#include <eosio/chain/scope_sequence_object.hpp>
 #include <eosio/chain/account_object.hpp>
 #include <eosio/chain/global_property_object.hpp>
 #include <boost/container/flat_set.hpp>
@@ -35,10 +34,8 @@ static inline void print_debug(account_name receiver, const action_trace& ar) {
 action_trace apply_context::exec_one()
 {
    auto start = fc::time_point::now();
-   cpu_usage = 0;
-   cpu_usage_limit = trx_context.get_action_cpu_usage_limit( context_free );
+
    const auto& cfg = control.get_global_properties().configuration;
-   checktime( cfg.base_per_action_cpu_usage );
    try {
       const auto &a = control.get_account(receiver);
       privileged = a.privileged;
@@ -54,6 +51,7 @@ action_trace apply_context::exec_one()
          } catch ( const wasm_exit& ){}
       }
 
+
    } FC_CAPTURE_AND_RETHROW((_pending_console_output.str()));
 
    action_receipt r;
@@ -66,13 +64,9 @@ action_trace apply_context::exec_one()
       r.auth_sequence[auth.actor] = next_auth_sequence( auth.actor );
    }
 
-   cpu_usage = trx_context.add_action_cpu_usage( cpu_usage, context_free );
-
    action_trace t(r);
    t.trx_id = trx_context.id;
    t.act = act;
-   t.cpu_usage = cpu_usage;
-   t.total_cpu_usage = cpu_usage;
    t.console = _pending_console_output.str();
 
    trx_context.executed.emplace_back( move(r) );
@@ -92,7 +86,6 @@ void apply_context::exec()
    for( uint32_t i = 1; i < _notified.size(); ++i ) {
       receiver = _notified[i];
       trace.inline_traces.emplace_back( exec_one() );
-      trace.total_cpu_usage += trace.inline_traces.back().total_cpu_usage;
    }
 
    if( _cfa_inline_actions.size() > 0 || _inline_actions.size() > 0 ) {
@@ -103,35 +96,17 @@ void apply_context::exec()
    for( const auto& inline_action : _cfa_inline_actions ) {
       trace.inline_traces.emplace_back();
       trx_context.dispatch_action( trace.inline_traces.back(), inline_action, inline_action.account, true, recurse_depth + 1 );
-      trace.total_cpu_usage += trace.inline_traces.back().total_cpu_usage;
    }
 
    for( const auto& inline_action : _inline_actions ) {
       trace.inline_traces.emplace_back();
       trx_context.dispatch_action( trace.inline_traces.back(), inline_action, inline_action.account, false, recurse_depth + 1 );
-      trace.total_cpu_usage += trace.inline_traces.back().total_cpu_usage;
    }
 
 } /// exec()
 
 bool apply_context::is_account( const account_name& account )const {
    return nullptr != db.find<account_object,by_name>( account );
-}
-
-bool apply_context::all_authorizations_used()const {
-   for ( bool has_auth : used_authorizations ) {
-      if ( !has_auth )
-         return false;
-   }
-   return true;
-}
-
-vector<permission_level> apply_context::unused_authorizations()const {
-   vector<permission_level> ret_auths;
-   for ( uint32_t i=0; i < act.authorization.size(); i++ )
-      if ( !used_authorizations[i] )
-         ret_auths.push_back( act.authorization[i] );
-   return ret_auths;
 }
 
 void apply_context::require_authorization( const account_name& account ) {
@@ -209,20 +184,21 @@ void apply_context::execute_inline( action&& a ) {
 
    if ( !privileged ) {
       if( a.account != receiver ) { // if a contract is calling itself then there is no need to check permissions
-         const auto delay = control.limit_delay( control.get_authorization_manager()
-                                                        .check_authorization( {a},
-                                                                              flat_set<public_key_type>(),
-                                                                              false,
-                                                                              {receiver}                   ) );
-         FC_ASSERT( trx_context.published + delay <= control.pending_block_time(),
-                    "authorization for inline action imposes a delay of ${delay} seconds that is not met",
-                    ("delay", delay.to_seconds()) );
+         control.get_authorization_manager()
+                .check_authorization( {a},
+                                      {},
+                                      {{receiver, config::eosio_code_name}},
+                                      control.pending_block_time() - trx_context.published,
+                                      std::bind(&apply_context::checktime, this, std::placeholders::_1),
+                                      false
+                                    );
 
          //QUESTION: Is it smart to allow a deferred transaction that has been delayed for some time to get away
          //          with sending an inline action that requires a delay even though the decision to send that inline
          //          action was made at the moment the deferred transaction was executed with potentially no forewarning?
       }
    }
+
    _inline_actions.emplace_back( move(a) );
 }
 
@@ -250,7 +226,7 @@ void apply_context::schedule_deferred_transaction( const uint128_t& sender_id, a
    trx_context.add_net_usage( static_cast<uint64_t>(cfg.base_per_transaction_net_usage)
                                + static_cast<uint64_t>(config::transaction_id_net_usage) ); // Will exit early if net usage cannot be payed.
 
-   fc::microseconds required_delay;
+   auto delay = fc::seconds(trx.delay_sec);
 
    if( !privileged ) {
       if (payer != receiver) {
@@ -267,20 +243,16 @@ void apply_context::schedule_deferred_transaction( const uint128_t& sender_id, a
          }
       }
       if( check_auth ) {
-         required_delay = control.limit_delay( control.get_authorization_manager()
-                                                      .check_authorization( trx.actions,
-                                                                            flat_set<public_key_type>(),
-                                                                            false,
-                                                                            {receiver}                   ) );
-
+         control.get_authorization_manager()
+                .check_authorization( trx.actions,
+                                      {},
+                                      {{receiver, config::eosio_code_name}},
+                                      delay,
+                                      std::bind(&apply_context::checktime, this, std::placeholders::_1),
+                                      false
+                                    );
       }
    }
-
-   auto delay = fc::seconds(trx.delay_sec);
-   EOS_ASSERT( delay >= required_delay, transaction_exception,
-               "authorization imposes a delay (${required_delay} sec) greater than the delay specified in transaction header (${specified_delay} sec)",
-               ("required_delay", required_delay.to_seconds())("specified_delay", delay.to_seconds()) );
-
 
    uint32_t trx_size = 0;
    auto& d = control.db();
@@ -297,7 +269,7 @@ void apply_context::schedule_deferred_transaction( const uint128_t& sender_id, a
          });
    } else {
       d.create<generated_transaction_object>( [&]( auto& gtx ) {
-            gtx.trx_id      = trx_context.id;
+            gtx.trx_id      = trx.id();
             gtx.sender      = receiver;
             gtx.sender_id   = sender_id;
             gtx.payer       = payer;
@@ -366,8 +338,6 @@ void apply_context::reset_console() {
 }
 
 void apply_context::checktime(uint32_t instruction_count) {
-   cpu_usage += instruction_count;
-   EOS_ASSERT( BOOST_LIKELY(cpu_usage <= cpu_usage_limit), action_cpu_usage_exceeded, "action cpu usage exceeded" );
    trx_context.check_time();
 }
 
@@ -378,12 +348,12 @@ bytes apply_context::get_packed_transaction() {
 }
 
 void apply_context::update_db_usage( const account_name& payer, int64_t delta ) {
-   if( (delta > 0) ) {
+   if( delta > 0 ) {
       if( !(privileged || payer == account_name(receiver)) ) {
          require_authorization( payer );
       }
-      trx_context.add_ram_usage(payer, delta);
    }
+   trx_context.add_ram_usage(payer, delta);
 }
 
 
@@ -424,14 +394,6 @@ int apply_context::get_context_free_data( uint32_t index, char* buffer, size_t b
    memcpy( buffer, trx.context_free_data[index].data(), copy_size );
 
    return copy_size;
-}
-
-void apply_context::check_auth( const transaction& trx, const vector<permission_level>& perm ) {
-   control.get_authorization_manager().check_authorization( trx.actions,
-                                                            {},
-                                                            true,
-                                                            {},
-                                                            flat_set<permission_level>(perm.begin(), perm.end()) );
 }
 
 int apply_context::db_store_i64( uint64_t scope, uint64_t table, const account_name& payer, uint64_t id, const char* buffer, size_t buffer_size ) {

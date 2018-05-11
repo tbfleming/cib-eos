@@ -209,12 +209,16 @@ class multi_index
                   const T& operator*()const { return *static_cast<const T*>(_item); }
                   const T* operator->()const { return static_cast<const T*>(_item); }
 
-                  const_iterator operator++(int)const {
-                     return ++(const_iterator(*this));
+                  const_iterator operator++(int){
+                     const_iterator result(*this);
+                     ++(*this);
+                     return result;
                   }
 
-                  const_iterator operator--(int)const {
-                     return --(const_iterator(*this));
+                  const_iterator operator--(int){
+                     const_iterator result(*this);
+                     --(*this);
+                     return result;
                   }
 
                   const_iterator& operator++() {
@@ -503,11 +507,16 @@ class multi_index
          const T& operator*()const { return *static_cast<const T*>(_item); }
          const T* operator->()const { return static_cast<const T*>(_item); }
 
-         const_iterator operator++(int)const {
-            return ++(const_iterator(*this));
+         const_iterator operator++(int) {
+            const_iterator result(*this);
+            ++(*this);
+            return result;
          }
-         const_iterator operator--(int)const {
-            return --(const_iterator(*this));
+
+         const_iterator operator--(int) {
+            const_iterator result(*this);
+            --(*this);
+            return result;
          }
 
          const_iterator& operator++() {
@@ -742,9 +751,9 @@ class multi_index
          });
       }
 
-      const T& get( uint64_t primary )const {
+   const T& get( uint64_t primary, const char* error_msg = "unable to find key" )const {
          auto result = find( primary );
-         eosio_assert( result != cend(), "unable to find key" );
+         eosio_assert( result != cend(), error_msg );
          return *result;
       }
 
